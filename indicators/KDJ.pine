@@ -1,0 +1,26 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("KDJ", overlay = false)
+
+// Input
+rsvPeriod = input.int(9, title = "RSV Period")
+kPeriod = input.int(3, title = "K Smoothing Period")
+dPeriod = input.int(3, title = "D Smoothing Period")
+
+lowestLow = ta.lowest(low, rsvPeriod)
+highestHigh = ta.highest(high, rsvPeriod)
+rsv = lowestLow == highestHigh ? 0 : (close - lowestLow) / (highestHigh - lowestLow) * 100
+
+k = ta.ema(rsv, kPeriod)
+d = ta.ema(k, dPeriod)
+j = 3 * k - 2 * d
+
+plot(k, title = "K", color = color.orange, linewidth = 1)
+plot(d, title = "D", color = color.blue, linewidth = 1)
+plot(j, title = "J", color = color.purple, linewidth = 1)
+
+hline(20, title = "Oversold", color = color.gray, linestyle = hline.style_dashed)
+hline(50, title = "Middle", color = color.gray, linestyle = hline.style_dashed)
+hline(80, title = "Overbought", color = color.gray, linestyle = hline.style_dashed)

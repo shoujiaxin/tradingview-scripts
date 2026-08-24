@@ -1,0 +1,19 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("EMA", overlay = true)
+
+src = input.source(close, "Source")
+
+len1 = input.int(5, title = "EMA 1 Length", minval = 1)
+len2 = input.int(20, title = "EMA 2 Length", minval = 1)
+len3 = input.int(50, title = "EMA 3 Length", minval = 1)
+
+ema1 = ta.ema(src, len1)
+ema2 = ta.ema(src, len2)
+ema3 = ta.ema(src, len3)
+
+plot(ema1, title = "EMA 1", color = color.orange)
+plot(ema2, title = "EMA 2", color = color.blue)
+plot(ema3, title = "EMA 3", color = color.green)
