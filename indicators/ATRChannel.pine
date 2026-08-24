@@ -1,0 +1,29 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("ATR Channel", shorttitle = "ATR Channel", overlay = true)
+
+// ————— Inputs
+int emaLengthInput = input.int(22, "EMA Length", minval = 1)
+int atrLengthInput = input.int(13, "ATR Length", minval = 1)
+
+// ————— Calculations
+float emaValue = ta.ema(close, emaLengthInput)
+float atrValue = ta.atr(atrLengthInput)
+
+float upper1Atr = emaValue + atrValue
+float lower1Atr = emaValue - atrValue
+float upper2Atr = emaValue + 2.0 * atrValue
+float lower2Atr = emaValue - 2.0 * atrValue
+float upper3Atr = emaValue + 3.0 * atrValue
+float lower3Atr = emaValue - 3.0 * atrValue
+
+// ————— Visuals
+plot(emaValue, "EMA", color = color.yellow, linewidth = 1)
+plot(upper1Atr, "+1 ATR", color = color.aqua, linestyle = plot.linestyle_dashed)
+plot(lower1Atr, "-1 ATR", color = color.aqua, linestyle = plot.linestyle_dashed)
+plot(upper2Atr, "+2 ATR", color = color.orange, linestyle = plot.linestyle_dashed)
+plot(lower2Atr, "-2 ATR", color = color.orange, linestyle = plot.linestyle_dashed)
+plot(upper3Atr, "+3 ATR", color = color.red, linestyle = plot.linestyle_dashed)
+plot(lower3Atr, "-3 ATR", color = color.red, linestyle = plot.linestyle_dashed)
