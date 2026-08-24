@@ -1,0 +1,30 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("Elder Directional System", shorttitle = "Elder DMI/ADX", overlay = false, precision = 2)
+
+// ————— Inputs
+int diLengthInput = input.int(13, "DI EMA Length", minval = 1)
+int adxLengthInput = input.int(13, "ADX EMA Length", minval = 1)
+
+// ————— Calculations
+float upMove = ta.change(high)
+float downMove = -ta.change(low)
+float plusDm = upMove > downMove and upMove > 0.0 ? upMove : 0.0
+float minusDm = downMove > upMove and downMove > 0.0 ? downMove : 0.0
+float trueRange = ta.tr(true)
+
+float rawPlusDi = trueRange > 0.0 ? 100.0 * plusDm / trueRange : 0.0
+float rawMinusDi = trueRange > 0.0 ? 100.0 * minusDm / trueRange : 0.0
+float plusDi = ta.ema(rawPlusDi, diLengthInput)
+float minusDi = ta.ema(rawMinusDi, diLengthInput)
+
+float diSum = plusDi + minusDi
+float dxValue = diSum > 0.0 ? 100.0 * math.abs(plusDi - minusDi) / diSum : 0.0
+float adxValue = ta.ema(dxValue, adxLengthInput)
+
+// ————— Visuals
+plot(plusDi, "+DI", color = color.lime)
+plot(minusDi, "-DI", color = color.red)
+plot(adxValue, "ADX", color = color.blue, linewidth = 2)

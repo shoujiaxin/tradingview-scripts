@@ -11,6 +11,7 @@ A collection of TradingView indicators, strategies, and reusable libraries writt
 ## Conventions
 
 - Use the `.pine` file extension.
+- Name script files using lowercase kebab-case, such as `atr-channel.pine`.
 - Declare the Pine Script version at the top of every script.
 - Keep one indicator, strategy, or library per file.
 - Document inputs, signals, and repainting behavior in each script.
@@ -22,4 +23,3 @@ A collection of TradingView indicators, strategies, and reusable libraries writt
 3. Save the script, then choose **Add to chart**.
 
 > These scripts are for research and educational purposes. They are not financial advice.
-
