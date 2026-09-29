@@ -1,0 +1,43 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+strategy("EFI Zero Cross with Protective Stop", overlay = false, pyramiding = 0,
+     initial_capital = 100000, default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 10, margin_long = 100, margin_short = 100,
+     commission_type = strategy.commission.percent, commission_value = 0.1,
+     slippage = 1, calc_on_every_tick = false, calc_on_order_fills = false,
+     process_orders_on_close = false)
+
+// Lengths count chart bars. Use a daily chart for a 13-day EFI.
+int efiLengthInput = input.int(13, "EFI EMA Length", minval = 1)
+int atrLengthInput = input.int(13, "Stop ATR Length", minval = 1)
+float atrMultiplierInput = input.float(2.0, "Stop ATR Multiplier", minval = 0.1, step = 0.1)
+
+float efi = ta.ema(volume * ta.change(close), efiLengthInput)
+float atrValue = ta.atr(atrLengthInput)
+bool crossesUp = ta.crossover(efi, 0.0)
+bool crossesDown = ta.crossunder(efi, 0.0)
+bool dataReady = bar_index >= efiLengthInput and not na(volume) and not na(volume[1]) and not na(atrValue) and atrValue > 0.0
+bool buySignal = barstate.isconfirmed and dataReady and crossesUp and strategy.position_size == 0
+bool sellSignal = barstate.isconfirmed and crossesDown and strategy.position_size > 0
+
+// Snapshot signal-bar ATR; loss is a tick distance from the actual entry fill.
+// Submit the stop alongside the entry so it also protects the entry bar.
+var int stopTicks = na
+if buySignal
+    stopTicks := math.max(1, int(math.ceil(atrValue * atrMultiplierInput / syminfo.mintick)))
+    strategy.entry("Long", strategy.long, comment = "EFI cross above zero")
+    strategy.exit("Protective Stop", from_entry = "Long", loss = stopTicks, comment = "ATR stop")
+
+// The existing stop stays active while the market close order awaits its fill.
+if sellSignal
+    strategy.close("Long", comment = "EFI cross below zero")
+
+// A stop exit does not re-enter until another confirmed upward zero crossing.
+float stopPrice = strategy.position_size > 0 ? strategy.position_avg_price - stopTicks * syminfo.mintick : na
+plot(efi, "EFI", color = efi >= 0.0 ? color.green : color.red, linewidth = 1)
+hline(0.0, "Zero", color = color.gray, linestyle = hline.style_dashed)
+plot(stopPrice, "Protective Stop", color = color.red, linewidth = 1, style = plot.style_linebr, force_overlay = true)
+plotshape(buySignal, title = "Buy Signal", style = shape.triangleup, location = location.belowbar, color = color.green, size = size.tiny, text = "BUY", force_overlay = true)
+plotshape(sellSignal, title = "Sell Signal", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.tiny, text = "SELL", force_overlay = true)
