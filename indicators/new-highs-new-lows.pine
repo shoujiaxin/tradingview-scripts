@@ -1,0 +1,55 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("US 52-Week New Highs - New Lows", shorttitle = "NH-NL", overlay = false, precision = 0, timeframe = "1D", timeframe_gaps = true)
+
+// Uses exchange-wide counts, rather than the chart symbol's price extremes.
+// Keep the calculation timeframe at 1D so the EMA length counts trading days.
+// On weekly/monthly charts, only a sampled daily value is shown per chart bar.
+// Today's counts and EMA can change until the daily source bars close; no future
+// values are requested. Data-provider revisions can still change past values.
+
+// ————— Inputs
+string marketInput = input.string("NYSE + NASDAQ", "Market", options = ["NYSE", "NASDAQ", "NYSE + NASDAQ"])
+int emaLengthInput = input.int(10, "EMA Length (Trading Days)", minval = 1)
+bool showEmaInput = input.bool(true, "Show EMA")
+string nyseHighsInput = input.symbol("INDEX:HIGN", "NYSE New Highs", group = "52-Week Breadth Sources")
+string nyseLowsInput = input.symbol("INDEX:LOWN", "NYSE New Lows", group = "52-Week Breadth Sources")
+string nasdaqHighsInput = input.symbol("INDEX:HIGQ", "NASDAQ New Highs", group = "52-Week Breadth Sources")
+string nasdaqLowsInput = input.symbol("INDEX:LOWQ", "NASDAQ New Lows", group = "52-Week Breadth Sources")
+
+if not timeframe.isdaily or timeframe.multiplier != 1
+    runtime.error("Set the indicator's calculation timeframe to 1 day. EMA length counts trading days.")
+
+// ————— Data
+// gaps_on preserves missing sessions; invalid/unavailable symbols return na.
+// Never replace missing counts with zero or silently use only one exchange.
+float nyseHighs = request.security(nyseHighsInput, "1D", close, gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+float nyseLows = request.security(nyseLowsInput, "1D", close, gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+float nasdaqHighs = request.security(nasdaqHighsInput, "1D", close, gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+float nasdaqLows = request.security(nasdaqLowsInput, "1D", close, gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+
+// ————— Calculations
+float newHighs = switch marketInput
+    "NYSE" => nyseHighs
+    "NASDAQ" => nasdaqHighs
+    => nyseHighs + nasdaqHighs
+
+float newLows = switch marketInput
+    "NYSE" => nyseLows
+    "NASDAQ" => nasdaqLows
+    => nyseLows + nasdaqLows
+
+// Positive: more stocks making new highs. Negative: more making new lows.
+// These describe breadth, rather than standalone buy/sell signals.
+float netNewHighs = newHighs - newLows
+float netEma = ta.ema(netNewHighs, emaLengthInput)
+color breadthColor = netNewHighs > 0.0 ? color.lime : netNewHighs < 0.0 ? color.red : color.gray
+
+// ————— Visuals
+hline(0.0, "Zero", color = color.gray, linestyle = hline.style_dashed)
+plot(netNewHighs, "52-Week New Highs - New Lows", color = breadthColor, style = plot.style_histogram, linewidth = 2)
+plot(showEmaInput and not na(netNewHighs) ? netEma : na, "Net New Highs EMA", color = color.orange, linewidth = 2, style = plot.style_linebr)
+plot(newHighs, "52-Week New Highs", display = display.data_window)
+plot(newLows, "52-Week New Lows", display = display.data_window)
