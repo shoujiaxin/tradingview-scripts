@@ -1,0 +1,214 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("SPY Intraday Noise Momentum Signals", shorttitle = "Noise Momentum", overlay = true)
+
+// Signals of the SPY Intraday Noise Momentum strategy, after Zarattini, Aziz & Barbon (2024), "Beat the Market: An
+// Effective Intraday Momentum Strategy for S&P500 ETF (SPY)", plus a filter on the previous session's move.
+//
+// Signals: every 30 minutes from the open until 30 minutes before the close, go long when the close is above both the
+// upper bound and the session VWAP, short when it is below both the lower bound and the VWAP, and flat otherwise.
+// Bounds: max(open, previous close) x (1 + width) and min(open, previous close) x (1 - width). The width at a check is
+// the mean absolute move from the open at that time of day over the last 14 sessions; the previous close is reduced by
+// a dividend going ex today. A new position on one side is skipped, leaving the book flat, when the previous session
+// returned at least one daily volatility in that direction. Every position closes one minute before the close, on the
+// close of the bar ending at 15:59 (12:59 on 13:00 early closes).
+// Exposure is min(4, 2% / daily volatility) times equity, where the daily volatility is the sample standard deviation
+// of the last 14 close-to-close returns.
+//
+// Use a 1-minute chart with regular trading hours. Signals fire when the triggering bar closes. History comes from
+// 30-minute and daily bars read one bar late, so signals use completed bars only and do not repaint. The exception is
+// a live ex-date: the previous close is adjusted only if TradingView reports the dividend by the open.
+
+// ————— Inputs
+int lookbackInput = input.int(14, "Band Lookback (Sessions)", minval = 1, group = "Noise Band")
+float bandMultInput = input.float(1.0, "Band Width Multiplier", minval = 0.0, step = 0.1, group = "Noise Band")
+int volWindowInput = input.int(14, "Volatility Window (Sessions)", minval = 2, group = "Sizing")
+float targetVolInput = input.float(2.0, "Daily Volatility Target (%)", minval = 0.01, step = 0.1, group = "Sizing") / 100.0
+float maxLeverageInput = input.float(4.0, "Max Leverage", minval = 0.01, step = 0.5, group = "Sizing")
+bool priorMoveFilterInput = input.bool(true, "Skip Entries After a Large Prior Move", group = "Prior-Move Filter")
+float priorMoveMaxInput = input.float(1.0, "Prior Move Threshold (Daily Volatilities)", minval = 0.0, step = 0.1, group = "Prior-Move Filter")
+bool showTableInput = input.bool(true, "Show Status Table", group = "Display")
+
+if not timeframe.isminutes or timeframe.multiplier != 1
+    runtime.error("Use a 1-minute chart: the rules act on 1-minute bars.")
+if syminfo.session != session.regular
+    runtime.error("Turn off extended trading hours: the rules use regular-session bars only.")
+
+// ————— Constants
+const int CHECK_EVERY = 30      // minutes between checks, counted from the open
+const int LAST_CHECK_GAP = 30   // the last check comes at least this many minutes before the close
+const int MARKS = 12            // 30-minute marks a full session can check at: 30, 60, ..., 360
+
+type Moves
+    array<float> values
+
+// A session starts on its first regular-hours bar. A dataset's first bar is reported as one even when it falls inside
+// a session, so it counts only when it opens with the session.
+sessionStarts() =>
+    session.isfirstbar_regular and (not barstate.isfirst or time == time("1D"))
+
+// ————— History
+// Band widths come from regular-session 30-minute bars. They start at the open, so their opens and their closes at the
+// 30-minute marks are the 1-minute prices the rules use, and their history reaches further back than 1-minute bars.
+// Each bar returns the widths the next session would use if that bar closed its session; read one bar late, a
+// session's first bar gets the widths as of the previous session's close.
+bandWidths(int lookback) =>
+    var array<Moves> marks = array.new<Moves>()
+    var array<float> todayMoves = array.new<float>(MARKS, na)
+    var float dayOpen = na
+    var int dayStart = na
+    if barstate.isfirst
+        for i = 0 to MARKS - 1
+            marks.push(Moves.new(array.new<float>()))
+    if sessionStarts()
+        if not na(dayStart)
+            for i = 0 to MARKS - 1
+                float move = todayMoves.get(i)
+                if not na(move)
+                    array<float> values = marks.get(i).values
+                    values.push(move)
+                    if values.size() > lookback
+                        values.shift()
+        dayOpen := open
+        dayStart := time("1D")
+        todayMoves.fill(na)
+    if not na(dayStart)
+        int k = int(math.round((time_close - dayStart) / 60000.0))
+        if k % CHECK_EVERY == 0 and k >= CHECK_EVERY and k <= CHECK_EVERY * MARKS
+            todayMoves.set(k / CHECK_EVERY - 1, math.abs(close / dayOpen - 1.0))
+    array<float> widths = array.new<float>(MARKS, na)
+    for i = 0 to MARKS - 1
+        array<float> values = marks.get(i).values
+        float move = todayMoves.get(i)
+        int fromHistory = na(move) ? lookback : lookback - 1
+        if values.size() >= fromHistory
+            float total = fromHistory > 0 ? values.slice(values.size() - fromHistory, values.size()).sum() : 0.0
+            widths.set(i, (total + nz(move)) / lookback)
+    widths[1]
+
+// Daily returns come from daily bars, whose close is the official closing price; the last 1-minute close can differ.
+// The dividend request looks ahead so that a dividend lands on its ex-date's bar instead of the next one; the amount is
+// announced well before. Read one bar late, a session gets the values as of the previous session's close.
+dailyHistory(int volWindow) =>
+    float paid = request.dividends(syminfo.tickerid, dividends.gross, barmerge.gaps_on, barmerge.lookahead_on)
+    float sessionReturn = close / (close[1] - nz(paid)) - 1.0
+    float sigmaD = ta.stdev(sessionReturn, volWindow, false)
+    [sigmaD[1], sessionReturn[1], close[1]]
+
+string tickerRegular = ticker.modify(syminfo.tickerid, session = session.regular)
+array<float> priorWidths = request.security(tickerRegular, "30", bandWidths(lookbackInput), lookahead = barmerge.lookahead_on)
+[priorSigmaD, priorReturn, priorClose] = request.security(tickerRegular, "1D", dailyHistory(volWindowInput),
+     lookahead = barmerge.lookahead_on)
+// The dividend going ex today, on the session's first bar.
+float paid = request.dividends(syminfo.tickerid, dividends.gross, barmerge.gaps_on, barmerge.lookahead_off)
+
+// ————— Session state
+var array<float> widths = array.new<float>()
+var int openTime = na
+var int sessionMinutes = na
+var float dayOpen = na
+var float prevCloseAdj = na
+var float priceVolume = 0.0
+var float totalVolume = 0.0
+var bool ready = false
+var float sigmaD = na
+var float leverage = na
+var float priorMove = na
+var int side = 0
+
+if sessionStarts()
+    openTime := time("1D")
+    sessionMinutes := int(math.round((time_close("1D") - openTime) / 60000.0))
+    dayOpen := open
+    priceVolume := 0.0
+    totalVolume := 0.0
+    side := 0
+    widths := priorWidths
+    ready := not na(priorWidths) and not na(priorClose) and not na(priorSigmaD)
+         and sessionMinutes - LAST_CHECK_GAP >= CHECK_EVERY
+    if ready
+        for k = CHECK_EVERY to sessionMinutes - LAST_CHECK_GAP by CHECK_EVERY
+            if na(widths.get(k / CHECK_EVERY - 1))
+                ready := false
+    if ready
+        // The chart's first bar repeats the last dividend before it.
+        prevCloseAdj := priorClose - (barstate.isfirst ? 0.0 : nz(paid))
+        sigmaD := priorSigmaD
+        leverage := sigmaD > 0.0 ? math.min(maxLeverageInput, targetVolInput / sigmaD) : maxLeverageInput
+        priorMove := sigmaD > 0.0 ? priorReturn / sigmaD : 0.0
+
+// ————— Checks and exit
+// Signal codes: 1 long, -1 short, 0 flat, 2 end of day; na when the position does not change.
+int signal = na
+int skipped = 0
+int nextCheck = na
+float upperBound = na
+float lowerBound = na
+float sessionVwap = na
+if not na(openTime)
+    int k = int(math.round((time_close - openTime) / 60000.0))
+    if volume > 0
+        priceVolume += hlc3 * volume
+        totalVolume += volume
+    sessionVwap := totalVolume > 0.0 ? priceVolume / totalVolume : close
+    if ready
+        nextCheck := math.max(CHECK_EVERY, k + (CHECK_EVERY - k % CHECK_EVERY) % CHECK_EVERY)
+        if nextCheck <= sessionMinutes - LAST_CHECK_GAP
+            float width = widths.get(nextCheck / CHECK_EVERY - 1)
+            upperBound := math.max(dayOpen, prevCloseAdj) * (1.0 + bandMultInput * width)
+            lowerBound := math.min(dayOpen, prevCloseAdj) * (1.0 - bandMultInput * width)
+            // A realtime bar's signal is final only at its close.
+            if k == nextCheck and barstate.isconfirmed
+                int wanted = close > math.max(upperBound, sessionVwap) ? 1 : close < math.min(lowerBound, sessionVwap) ? -1 : 0
+                bool blocked = priorMoveFilterInput and wanted != 0 and wanted != side and wanted * priorMove >= priorMoveMaxInput
+                int target = blocked ? 0 : wanted
+                skipped := blocked ? wanted : 0
+                if target != side
+                    signal := target
+                    side := target
+        else
+            nextCheck := na
+            if k == sessionMinutes - 1 and side != 0 and barstate.isconfirmed
+                signal := 2
+                side := 0
+
+// ————— Visuals
+// The bounds shown on each bar are the ones its session's next check compares against.
+plot(upperBound, "Upper Bound", color = color.green, style = plot.style_linebr)
+plot(lowerBound, "Lower Bound", color = color.red, style = plot.style_linebr)
+plot(sessionVwap, "VWAP", color = color.orange, style = plot.style_linebr)
+plotshape(signal == 1, "Long", shape.triangleup, location.belowbar, color.green, text = "Long", size = size.tiny)
+plotshape(signal == -1, "Short", shape.triangledown, location.abovebar, color.red, text = "Short", size = size.tiny)
+plotshape(signal == 0, "Flat", shape.xcross, location.abovebar, color.gray, text = "Flat", size = size.tiny)
+plotshape(signal == 2, "End of Day", shape.circle, location.abovebar, color.gray, text = "Close", size = size.tiny)
+plotshape(skipped == 1, "Skipped Long", shape.xcross, location.belowbar, color.orange, text = "Skip long", size = size.tiny)
+plotshape(skipped == -1, "Skipped Short", shape.xcross, location.abovebar, color.orange, text = "Skip short", size = size.tiny)
+bgcolor(side == 1 ? color.new(color.green, 90) : side == -1 ? color.new(color.red, 90) : na, title = "Position")
+
+alertcondition(signal == 1, "Go Long", "{{ticker}} noise momentum: go long at {{close}}")
+alertcondition(signal == -1, "Go Short", "{{ticker}} noise momentum: go short at {{close}}")
+alertcondition(signal == 0 or signal == 2, "Go Flat", "{{ticker}} noise momentum: go flat at {{close}}")
+
+var table status = table.new(position.top_right, 2, 7, bgcolor = color.new(color.black, 20), border_width = 1)
+if showTableInput and barstate.islast
+    string positionText = side == 1 ? "Long" : side == -1 ? "Short" : "Flat"
+    string checkText = not ready ? "Not enough history" : na(nextCheck) ? "None left today" :
+         str.format_time(openTime + nextCheck * 60000, "HH:mm", syminfo.timezone)
+    string blocks = not ready or not priorMoveFilterInput ? "-" : priorMove >= priorMoveMaxInput ? "New longs" :
+         -priorMove >= priorMoveMaxInput ? "New shorts" : "Nothing"
+    table.cell(status, 0, 0, "Position", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 0, positionText, text_color = side == 1 ? color.lime : side == -1 ? color.red : color.white)
+    table.cell(status, 0, 1, "Next check", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 1, checkText, text_color = color.white)
+    table.cell(status, 0, 2, "Long above", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 2, na(upperBound) ? "-" : str.tostring(math.max(upperBound, sessionVwap), format.mintick), text_color = color.lime)
+    table.cell(status, 0, 3, "Short below", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 3, na(lowerBound) ? "-" : str.tostring(math.min(lowerBound, sessionVwap), format.mintick), text_color = color.red)
+    table.cell(status, 0, 4, "Exposure", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 4, ready ? str.format("{0,number,#.##}x equity", leverage) : "-", text_color = color.white)
+    table.cell(status, 0, 5, "Prior move", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 5, ready ? str.format("{0,number,+#.##;-#.##} daily vol ({1,number,#.##}%)", priorMove, sigmaD * 100) : "-", text_color = color.white)
+    table.cell(status, 0, 6, "Filter blocks", text_color = color.white, text_halign = text.align_left)
+    table.cell(status, 1, 6, blocks, text_color = color.white)

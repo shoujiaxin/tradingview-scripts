@@ -60,9 +60,9 @@ the number of securities making 52-week highs minus those making 52-week lows.
 It defaults to NYSE + NASDAQ; either exchange can also be selected individually.
 The combined universe covers these two exchanges, rather than every US listing.
 
-| Market | New highs | New lows |
-| --- | --- | --- |
-| NYSE | [`INDEX:HIGN`](https://www.tradingview.com/symbols/INDEX-HIGN/) | [`INDEX:LOWN`](https://www.tradingview.com/symbols/INDEX-LOWN/) |
+| Market | New highs                                                       | New lows                                                        |
+| ------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| NYSE   | [`INDEX:HIGN`](https://www.tradingview.com/symbols/INDEX-HIGN/) | [`INDEX:LOWN`](https://www.tradingview.com/symbols/INDEX-LOWN/) |
 | NASDAQ | [`INDEX:HIGQ`](https://www.tradingview.com/symbols/INDEX-HIGQ/) | [`INDEX:LOWQ`](https://www.tradingview.com/symbols/INDEX-LOWQ/) |
 
 - **Calculation:** `net = new highs - new lows`. Combined mode sums both
@@ -83,3 +83,34 @@ The combined universe covers these two exchanges, rather than every US listing.
   can change until their bars close, and provider revisions can affect history.
   Zero crossings describe changes in breadth; no trading alerts are generated.
 
+## SPY Intraday Noise Momentum Signals
+
+[`spy-intraday-noise-momentum.pine`](spy-intraday-noise-momentum.pine) shows the
+signals of the
+[SPY intraday noise momentum strategy](../strategies/README.md#spy-intraday-noise-momentum)
+on the price chart, with the same rules, inputs, and data. Use a 1-minute SPY
+chart with regular trading hours.
+
+- **Lines:** the upper and lower bounds that the session's next check compares
+  against, and the session VWAP. The bounds step at each 30-minute mark and end
+  after the last check.
+- **Markers:** green "Long" and red "Short" triangles mark entries and
+  reversals; gray "Flat" crosses mark exits at a check, and gray "Close"
+  circles mark the end-of-day exit. Orange "Skip long" and "Skip short"
+  crosses mark checks where the prior-move filter blocked a new position.
+- **Background:** green while long, red while short.
+- **Status table:** position, the next check time in exchange time, the
+  current long trigger `max(upper, VWAP)` and short trigger `min(lower, VWAP)`
+  (the VWAP keeps moving until the check), exposure as a multiple of equity,
+  the prior move in daily volatilities with the daily volatility, and which
+  side the filter blocks today. It can be hidden.
+- **Alerts:** "Go Long", "Go Short", and "Go Flat" (exits at a check and at the
+  end of the day). Create them with "Once Per Bar Close".
+
+Signals are final when their 1-minute bar closes and do not repaint; on a
+realtime bar the lines and table update with each tick. As in the strategy, a
+live ex-date relies on TradingView reporting the dividend by the open. On an
+early close missing from TradingView's session data (see the strategy notes),
+no "Close" marker or "Go Flat" alert appears for a position still open at
+the close; the position resets to flat at the next open. Sessions without
+enough 30-minute or daily history show no bounds and no signals.
