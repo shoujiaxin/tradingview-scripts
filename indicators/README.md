@@ -83,6 +83,38 @@ The combined universe covers these two exchanges, rather than every US listing.
   can change until their bars close, and provider revisions can affect history.
   Zero crossings describe changes in breadth; no trading alerts are generated.
 
+## US Stocks Above 50-Day MA
+
+[`stocks-above-50-day-ma.pine`](stocks-above-50-day-ma.pine) measures market
+breadth using the percentage of stocks trading above their 50-day moving
+average, following the "Stocks above 50-Day MA" indicator in Alexander Elder's
+*The New Trading for a Living*.
+
+- **Data:** defaults to
+  [`INDEX:MMFI`](https://www.tradingview.com/symbols/INDEX-MMFI/), TradingView's
+  "Percent of Stocks Above 50-Day Average". The symbol can be changed in
+  settings, for example to
+  [`INDEX:S5FI`](https://www.tradingview.com/symbols/INDEX-S5FI/) for S&P 500
+  members. Security coverage, the moving-average method, and history depend on
+  the provider and TradingView account.
+- **Display:** a blue line in a separate pane, in percent, with dashed reference
+  lines at 75% and 25%. Both levels are adjustable.
+- **Signals:** a reversal near a reference line matters, rather than the level
+  being reached. A red downward triangle at the top of the pane marks the line
+  falling back below the upper level after being at or above it, which suggests
+  a top is being completed. A green upward triangle at the bottom of the pane
+  marks the line rising back above the lower level after being at or below it,
+  which suggests a bottom is being completed. A turn that stops short of a
+  level is not marked; move the level to include it. Markers describe breadth,
+  rather than standalone buy/sell signals; no alerts are generated.
+- **Timeframe:** follows the chart timeframe. Weekly charts are recommended for
+  catching intermediate reversals; each weekly bar shows the week's last value.
+  Charts below one day show the daily series.
+- **Repainting:** no lookahead is used. The current bar's value and markers can
+  change until the bar closes, and provider revisions can affect history. On
+  charts below one day, historical bars carry the last completed day's value,
+  while the realtime bar follows the current day's value.
+
 ## SPY Intraday Noise Momentum Signals
 
 [`spy-intraday-noise-momentum.pine`](spy-intraday-noise-momentum.pine) shows the

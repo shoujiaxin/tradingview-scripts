@@ -1,0 +1,36 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("US Stocks Above 50-Day MA", shorttitle = "Above 50D MA", overlay = false, format = format.percent, precision = 2)
+
+// Market breadth from Alexander Elder's "The New Trading for a Living": the
+// percentage of stocks trading above their 50-day moving average. It reads a
+// market-wide series, rather than the chart symbol's price.
+// A signal is the reversal near a reference line, rather than the level being
+// reached. Elder reads it on a weekly chart to catch intermediate reversals.
+// The current bar's value and markers can change until the bar closes; no future
+// values are requested. Data-provider revisions can still change past values.
+
+// ————— Inputs
+string sourceInput = input.symbol("INDEX:MMFI", "Stocks Above 50-Day MA Source")
+float upperLevelInput = input.float(75.0, "Upper Reference Level", minval = 0.0, maxval = 100.0)
+float lowerLevelInput = input.float(25.0, "Lower Reference Level", minval = 0.0, maxval = 100.0)
+
+// ————— Data
+// The 50-day comparison is a daily measure, so sub-daily charts show daily values.
+string sourceTimeframe = timeframe.isdwm ? timeframe.period : "1D"
+float aboveMa = request.security(sourceInput, sourceTimeframe, close)
+
+// ————— Calculations
+// Top: at or above the upper line, then back below it.
+// Bottom: at or below the lower line, then back above it.
+bool topReversal = ta.crossunder(aboveMa, upperLevelInput)
+bool bottomReversal = ta.crossover(aboveMa, lowerLevelInput)
+
+// ————— Visuals
+hline(upperLevelInput, "Upper Reference", color = color.gray, linestyle = hline.style_dashed)
+hline(lowerLevelInput, "Lower Reference", color = color.gray, linestyle = hline.style_dashed)
+plot(aboveMa, "Stocks Above 50-Day MA", color = color.blue, linewidth = 2)
+plotshape(topReversal, "Top Reversal", style = shape.triangledown, location = location.top, color = color.red, size = size.tiny)
+plotshape(bottomReversal, "Bottom Reversal", style = shape.triangleup, location = location.bottom, color = color.lime, size = size.tiny)
