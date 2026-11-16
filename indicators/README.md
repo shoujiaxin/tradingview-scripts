@@ -43,6 +43,23 @@ price chart.
 - +DI is green, -DI is red, and ADX is blue. This implementation uses EMA
   smoothing, so its values differ from Wilder-smoothed DMI/ADX.
 
+## Elder Impulse System
+
+[`impulse-system.pine`](impulse-system.pine) colors the price chart's background
+with the Impulse System from Alexander Elder's *The New Trading for a Living*.
+It combines the slope of an EMA, which measures inertia, with the slope of the
+MACD-Histogram, which measures momentum. The book colors the price bars; this
+script colors the background instead.
+
+- Green: the EMA and the MACD-Histogram both rose from the previous bar.
+- Red: both fell from the previous bar.
+- Blue: any other combination, including an unchanged value.
+- The EMA length defaults to 13 periods and MACD to 12, 26, and 9; all are
+  adjustable. Both are calculated from close.
+- The system censors trades, rather than signaling them: green prohibits
+  shorting, red prohibits buying, and blue permits either.
+- Bars without both slopes, at the start of the chart's history, stay uncolored.
+
 ## KDJ
 
 [`kdj.pine`](kdj.pine) plots K, D, and J in a separate pane.

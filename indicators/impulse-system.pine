@@ -1,0 +1,33 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shoujiaxin
+
+//@version=6
+indicator("Elder Impulse System", shorttitle = "Impulse", overlay = true)
+
+// From Alexander Elder's "The New Trading for a Living": the EMA slope measures
+// inertia and the MACD-Histogram slope measures momentum. The book colors the
+// price bars; this script colors the chart background instead.
+// The system censors trades, rather than signaling them: green prohibits
+// shorting, red prohibits buying, and blue permits either.
+// The current bar's color can change until the bar closes.
+
+// ————— Inputs
+int emaLengthInput = input.int(13, "EMA Length", minval = 1)
+int macdFastLengthInput = input.int(12, "MACD Fast Length", minval = 1)
+int macdSlowLengthInput = input.int(26, "MACD Slow Length", minval = 1)
+int macdSignalLengthInput = input.int(9, "MACD Signal Length", minval = 1)
+
+// ————— Calculations
+float emaChange = ta.change(ta.ema(close, emaLengthInput))
+[_, _, macdHistogram] = ta.macd(close, macdFastLengthInput, macdSlowLengthInput, macdSignalLengthInput)
+float histogramChange = ta.change(macdHistogram)
+
+// Bars without both slopes stay uncolored, rather than reading as mixed.
+color impulseColor = switch
+    emaChange > 0.0 and histogramChange > 0.0 => color.new(color.green, 80)
+    emaChange < 0.0 and histogramChange < 0.0 => color.new(color.red, 80)
+    not na(emaChange) and not na(histogramChange) => color.new(color.blue, 80)
+    => na
+
+// ————— Visuals
+bgcolor(impulseColor, title = "Impulse")
